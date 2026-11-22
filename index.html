@@ -136,6 +136,7 @@ select{padding:8px;border:1px solid var(--line);border-radius:8px;background:var
 .item.isout h3{color:var(--muted)}
 .ratebox{margin-top:8px}
 .tip{margin-top:4px;color:var(--food)}
+.packbtn{border:1px solid var(--line);background:var(--bg);border-radius:8px;font-size:12px;padding:4px 8px;color:var(--muted);flex:none}
 .cookdish.stack{flex-direction:column;align-items:flex-start}
 .cookdish{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
 .how{margin:6px 0 2px}.how summary{color:var(--accent)}.how ol{margin:6px 0;padding-left:20px;font-size:14px}.how a{font-size:13px;color:var(--accent)}
@@ -260,7 +261,7 @@ const fmtNum=x=>Number.isInteger(x)?String(x):String(Math.round(x*10)/10);
 const clone=o=>JSON.parse(JSON.stringify(o));
 
 /* ---------- State ---------- */
-const S={preview:{},draft:{},mode:"live",tab:"today",sel:ymd(new Date()),shopWeek:null,shopTrip:null,weekView:null,page:null,
+const S={pantry:[],packs:{},preview:{},draft:{},mode:"live",tab:"today",sel:ymd(new Date()),shopWeek:null,shopTrip:null,weekView:null,page:null,
   plans:{},ratings:[],workouts:{},days:{},shopping:{},custom:[],edits:{},settings:null};
 const todayKey=()=>ymd(new Date());
 
@@ -294,7 +295,7 @@ function gymLetter(date){if(date<startDate())return null;const d=parse(date),di=
 function setsFor(date){return (parse(date)-parse(startDate()))/864e5<7?2:3}
 
 /* ---------- Meal planner: ratings steer choices ---------- */
-function weightOf(r,prevIds,cat){const a=slotScore(r.id,cat||r.cat);let w=a==null?6:(a<=4?0:(a-3)*(a-3));if(prevIds.has(r.id))w*=0.35;return w}
+function weightOf(r,prevIds,cat){const a=slotScore(r.id,cat||r.cat);let w=a==null?6:(a<=4?0:(a-3)*(a-3));if(prevIds.has(r.id))w*=0.35;if(PANTRY_CTX&&usesPantry(r,PANTRY_CTX))w*=2.5;return w}
 function poolFor(cat){const all=allRecipes();let pool=all.filter(r=>r.cat===cat);
   if(cat==="batch")pool=pool.concat(all.filter(r=>r.cat==="quick"&&(reheatAvg(r.id)??0)>=8));
   if(cat==="weekend")pool=pool.concat(all.filter(r=>r.cat==="batch"&&(freshAvg(r.id)??0)>=8&&reheatAvg(r.id)!=null&&reheatAvg(r.id)<=5));
@@ -311,8 +312,8 @@ function generatePlan(wk){
   const prev=S.plans[ymd(addDays(parse(wk),-7))];
   const prevIds=new Set(prev?Object.values(prev.slots):[]);
   const rand=rng(hash(wk+":"+S.ratings.length));
-  const used=new Set();const slots={};
-  for(const s of ["b1","b2","q1","q2","w"]){const id=pick(SLOT_CAT[s],used,prevIds,rand);slots[s]=id;used.add(id)}
+  const used=new Set();const slots={};PANTRY_CTX=wk>=todayKey().slice(0,10)?ymd(addDays(parse(wk),-1)):null;
+  try{for(const s of ["b1","b2","q1","q2","w"]){const id=pick(SLOT_CAT[s],used,prevIds,rand);slots[s]=id;used.add(id)}}finally{PANTRY_CTX=null}
   return{week:wk,slots,createdAt:new Date().toISOString()};
 }
 function lastSavedWeek(){return ymd(addDays(weekStart(new Date()),7))}
@@ -403,10 +404,10 @@ const SEED={settings:{startDate:"2026-11-18"},
  workouts:{},custom:[]};
 let storageOK=true;
 
-function snapshotData(){return{app:"better-every-day",v:2,savedAt:new Date().toISOString(),settings:S.settings,plans:S.plans,ratings:S.ratings,workouts:S.workouts,days:S.days,shopping:S.shopping,custom:S.custom,edits:S.edits}}
+function snapshotData(){return{app:"better-every-day",v:2,savedAt:new Date().toISOString(),settings:S.settings,plans:S.plans,ratings:S.ratings,workouts:S.workouts,days:S.days,shopping:S.shopping,custom:S.custom,edits:S.edits,pantry:S.pantry,packs:S.packs}}
 function persist(){KIND_CACHE.clear();if(typeof SNACK_CACHE!=="undefined")SNACK_CACHE.clear();try{localStorage.setItem(STORE,JSON.stringify(snapshotData()));storageOK=true}catch(e){storageOK=false}}
 function validRecipe(r){return r&&typeof r.name==="string"&&Array.isArray(r.ing)&&Array.isArray(r.steps)}
-function applyData(d){S.settings=d.settings&&d.settings.startDate?d.settings:{startDate:DEFAULT_START};S.plans=d.plans||{};S.ratings=(d.ratings||[]).filter(r=>r&&typeof r.score==="number");S.workouts=d.workouts||{};S.days=d.days||{};S.shopping=d.shopping||{};S.custom=(d.custom||[]).filter(r=>validRecipe(r)&&CATS[r.cat]);S.edits=d.edits&&typeof d.edits==="object"?d.edits:{}}
+function applyData(d){S.settings=d.settings&&d.settings.startDate?d.settings:{startDate:DEFAULT_START};S.plans=d.plans||{};S.ratings=(d.ratings||[]).filter(r=>r&&typeof r.score==="number");S.workouts=d.workouts||{};S.days=d.days||{};S.shopping=d.shopping||{};S.custom=(d.custom||[]).filter(r=>validRecipe(r)&&CATS[r.cat]);S.edits=d.edits&&typeof d.edits==="object"?d.edits:{};S.pantry=Array.isArray(d.pantry)?d.pantry:[];S.packs=d.packs&&typeof d.packs==="object"?d.packs:{}}
 function loadLocal(){let d=null;try{const raw=localStorage.getItem(STORE);d=raw?JSON.parse(raw):null}catch(e){storageOK=false}
   applyData(d||clone(SEED));persist();
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}}
@@ -425,6 +426,45 @@ function reheatHow(id){const r=recipe(id);const how=r?.reheat||(REHEAT.pot.inclu
   if(how==="pot")return"Reheat in a pot: splash of water, lid on, medium heat for 5–8 min, stirring, until bubbling. Heat the rice or pasta in with it.";
   if(how==="pan")return"Reheat in a frying pan: splash of water, medium-high heat for 4–5 min, tossing, until piping hot.";
   return"Reheat in the oven: covered with foil, 180 °C for 15–20 min, until steaming hot in the middle.";}
+
+/* ---------- Pantry: what's left at home from bigger packs ---------- */
+/* Typical Danish supermarket pack sizes; tap "pack" on a shopping row to change one. */
+const DEFAULT_PACKS={"rice|g":1000,"wholewheat pasta|g":500,"couscous|g":500,"red lentils|g":500,"egg noodles|g":250,"potatoes|g":1000,"sweet potatoes|g":500,"eggs|pc":10,"cherry tomatoes|g":250,"hummus|g":200,"mixed nuts|g":200,"spinach|g":150,"green beans|g":250,"frozen mixed veg|g":750,"shrimp (frozen)|g":400,"stir-fry veg|g":400};
+const KEEP_DAYS={"Produce":6,"Meat & fish":2,"Eggs & plant yogurt":21,"Bread, rice & pasta":180,"Cans & jars":365,"Frozen":180,"Cupboard (check first)":365};
+function packOf(k){const v=S.packs[k];return v===0?null:v||DEFAULT_PACKS[k]||null}
+function pantryLive(onDate){return S.pantry.filter(e=>e.qty>1e-9&&(!e.useBy||e.useBy>=onDate))}
+function pantryHave(k,onDate){return pantryLive(onDate).filter(e=>e.k===k).reduce((a,e)=>a+e.qty,0)}
+function tripDate(wk,trip){const T=tpl(wk);return trip===1?(isStarter(wk)?startDate():ymd(addDays(parse(wk),-1))):ymd(addDays(parse(wk),T.shop2))}
+function buyPlan(it,wk,trip){const d=tripDate(wk,trip);const have=/^(tbsp|tsp)$/.test(it.u)?0:Math.min(it.q,pantryHave(it.k,d));const toBuy=Math.max(0,it.q-have);
+  const pack=/^(tbsp|tsp|clove)$/.test(it.u)?null:packOf(it.k);const packs=pack&&toBuy>0?Math.ceil(toBuy/pack-1e-9):0;const surplus=pack?packs*pack-toBuy:0;
+  return{have,toBuy,pack,packs,surplus}}
+function cleanPantry(){const t=todayKey();const n=S.pantry.length;S.pantry=S.pantry.filter(e=>e.qty>1e-9&&(!e.useBy||e.useBy>=t));return n!==S.pantry.length}
+let PANTRY_CTX=null;
+function usesPantry(r,onDate){if(!r)return false;const live=pantryLive(onDate).filter(e=>e.a!=="Cupboard (check first)");return r.ing.some(i=>live.some(e=>e.k===i[0]+"|"+normUnit(i[2])))}
+
+/* ---------- Calendar: shops and cooking as phone calendar events ---------- */
+function icsEsc(t){return String(t).replace(/[\\;,]/g,m=>"\\"+m).replace(/\n/g,"\\n")}
+function icsTime(date,time){return date.replace(/-/g,"")+"T"+time.replace(":","")+"00"}
+function addMin(time,m){const[h,mm]=time.split(":").map(Number);const t=h*60+mm+m;return pad(Math.floor(t/60)%24)+":"+pad(t%60)}
+function minutesOf(r){const m=String(r?.time||"").match(/(\d+)/);return m?Math.max(15,+m[1]):45}
+function weekEvents(wk){
+  const ev=[];const ws=parse(wk);const base=location.href.split("#")[0];
+  for(let i=0;i<7;i++){const date=ymd(addDays(ws,i));for(const it of schedule(date)){
+    if(it.kind==="shop")ev.push({uid:`${date}-${it.key}`,date,start:it.time,mins:45,title:it.title.replace("Grocery shop: ","Shop: "),desc:it.sub+"\nShopping list: "+base,alarm:30});
+    else if(it.kind==="cook"){for(const c of it.cooks){if(c.skips.includes(date))continue;const r=recipe(c.id);ev.push({uid:`${date}-cook-${c.slot}`,date,start:it.time,mins:minutesOf(r),title:`Cook: ${r?.name} (${c.portions} portions)`,desc:`Recipe: ${base}#recipe-${c.id}`,alarm:15})}}
+    else if(it.kind==="meal"&&it.m&&it.m.fresh&&!it.m.out&&it.m.slot!=="salad"&&!(tpl(wk).batchDay===i&&(it.m.slot==="b1"||it.m.slot==="b2"))){const r=recipe(it.m.recipeId);const c=computeWeek(wk).cooks[it.m.slot];
+      const start=addMin(it.time,-minutesOf(r));ev.push({uid:`${date}-cook-${it.m.slot}`,date,start,mins:minutesOf(r),title:`Cook: ${r?.name}${c?` (${c.portions} portion${c.portions>1?"s":""})`:""}`,desc:`Dinner at ${it.time}. Recipe: ${base}#recipe-${it.m.recipeId}`,alarm:15})}}}
+  return ev}
+function buildIcs(wk){
+  const now=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
+  const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Better Every Day//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
+  for(const e of weekEvents(wk)){lines.push("BEGIN:VEVENT",`UID:bed-${e.uid}@better-every-day`,`DTSTAMP:${now}`,`DTSTART:${icsTime(e.date,e.start)}`,`DTEND:${icsTime(e.date,addMin(e.start,e.mins))}`,`SUMMARY:${icsEsc(e.title)}`,`DESCRIPTION:${icsEsc(e.desc)}`,"BEGIN:VALARM","ACTION:DISPLAY",`DESCRIPTION:${icsEsc(e.title)}`,`TRIGGER:-PT${e.alarm}M`,"END:VALARM","END:VEVENT")}
+  lines.push("END:VCALENDAR");return lines.join("\r\n")}
+async function exportCalendar(wk){
+  const ics=buildIcs(wk);const name=`better-every-day-${wk}.ics`;
+  try{const file=new File([ics],name,{type:"text/calendar"});if(navigator.canShare&&navigator.canShare({files:[file]})&&/iPhone|iPad|Android/i.test(navigator.userAgent)){await navigator.share({files:[file],title:"Better Every Day week"});return}}catch(e){if(e&&e.name==="AbortError")return}
+  const url=URL.createObjectURL(new Blob([ics],{type:"text/calendar"}));const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  toast("Open the downloaded file to add the events to your calendar.")}
 
 /* ---------- Snacks: only what you've ticked off as bought ---------- */
 function ownedEver(name){for(const wk in S.shopping){for(const k in (S.shopping[wk].checked||{})){if(k.split("|")[1]===name)return true}}return false}
@@ -577,13 +617,16 @@ function viewWeek(){
       const txt=m.out?`<span class="muted">${meal==="snack"?"Skipped":"Eating out"}</span>`:m.other?`<span class="muted">Didn't cook</span>`:m.fallback?`<span class="muted">Nothing cooked</span>`:`${esc(recipe(m.recipeId)?.name)}${meal!=="snack"&&m.slot!=="salad"?` <span class="muted">(${m.fresh?"fresh":"reheat"})</span>`:""}${m.changed?` <span class="chip">Replanned</span>`:""}`;
       return`<div class="small"><b>${label}</b> ${txt}${rt?` <span class="chip food">${rt.score}/10</span>`:""}</div>`};
     return`<div class="week-day"><div><div class="d">${DAYN[i]}</div><div class="small muted">${addDays(ws,i).getDate()}</div></div><div>${line("lunch","Lunch")}${line("snack","Snack")}${line("dinner","Dinner")}<div class="chips" style="margin-top:4px">${k===startDate()?`<span class="chip">Shop 16:30</span>`:""}${i===T.shop2&&!(isStarter(wk)&&false)?`<span class="chip">Top-up shop 17:30</span>`:""}${i===6?`<span class="chip">Main shop 11:00</span>`:""}${T.batchDay===i?`<span class="chip food">Batch cook 16:00</span>`:T.cook[i]?`<span class="chip food">Cook ${T.cook[i].map(x=>CATS[SLOT_CAT[x]].portions).join("+")} portions</span>`:""}</div></div></div>`}).join("");
-  return`${weekNav("week",wk)}<section class="card"><h2>${past?"What was on the menu":"This week's dishes"}</h2><p class="small muted" style="margin:4px 0 0">${past?"Your ratings are shown next to each meal.":preview?"A preview based on your ratings so far. It can still change as you rate more dishes.":"Picked from your ratings. Batch dishes are judged mostly on how they taste reheated. Tap a dish for its recipe."}</p><div style="margin-top:6px">${slots}</div></section>
+  return`${weekNav("week",wk)}${past?"":`<button class="btn food" data-ics="${wk}" style="width:100%">Add this week to my calendar</button><p class="small muted" style="margin:-4px 0 0;text-align:center">Shops and cooking times with reminders. Add each week once.</p>`}<section class="card"><h2>${past?"What was on the menu":"This week's dishes"}</h2><p class="small muted" style="margin:4px 0 0">${past?"Your ratings are shown next to each meal.":preview?"A preview based on your ratings so far. It can still change as you rate more dishes.":"Picked from your ratings. Batch dishes are judged mostly on how they taste reheated. Tap a dish for its recipe."}</p><div style="margin-top:6px">${slots}</div></section>
   <section class="card"><h2>Day by day</h2><div style="margin-top:6px">${days}</div></section>`;
 }
 function weekNav(kind,wk){
   const cur=wkey(new Date());const prev=ymd(addDays(parse(wk),-7)),next=ymd(addDays(parse(wk),7));
   return`<div class="row-between"><button class="btn sm ghost" data-wknav="${kind}" data-wk="${prev}" aria-label="Previous week">‹</button><div style="text-align:center"><div class="kind">${wk===cur?"This week":wk>cur?"Next week":"Past week"}</div><b>${fmtShort(parse(wk))} – ${fmtShort(addDays(parse(wk),6))}</b></div><button class="btn sm ghost" data-wknav="${kind}" data-wk="${next}" aria-label="Next week">›</button></div>`;
 }
+function pantryCard(){const live=pantryLive(todayKey()).sort((a,b)=>a.n.localeCompare(b.n));
+  return`<section class="card"><div class="row-between"><h2>At home</h2><button class="btn sm ghost" id="pantry-add">+ Add</button></div><p class="small muted" style="margin:4px 0 6px">Leftovers from packs, used before buying more and favoured when next week is planned. Fresh food drops off after its use-by.</p>
+  ${live.length?live.map(e=>`<div class="shop-item"><label>${esc(e.n)}<span class="muted small" style="display:block">use by ${esc(fmtShort(parse(e.useBy)))}</span></label><span class="qty">${fmtNum(e.qty)} ${esc(e.u)}</span><button class="packbtn" data-pedit="${esc(e.id)}" aria-label="Change amount of ${esc(e.n)}">edit</button></div>`).join(""):`<div class="small muted">Nothing yet. Leftovers appear here when you tick items bought in packs.</div>`}</section>`}
 function defaultShop(){const t=new Date(),di=t.getDay(),wk=wkey(t);if(di>=5)return{wk:wkey(addDays(t,7)),trip:1};if(ymd(t)===startDate())return{wk,trip:1};return{wk,trip:2}}
 function viewShop(){
   const def=defaultShop();const wk=S.shopWeek||def.wk;const trip=S.shopTrip||def.trip;const groups=shoppingList(wk,trip);const allChecked=S.shopping[wk]?.checked||{};
@@ -593,8 +636,13 @@ function viewShop(){
   const covers=T.trips[trip].filter(s=>portionsEaten(wk,s)>0).map(s=>recipe(plan.slots[s])?.name).join(", ")||"no cooked dishes";
   const total=groups.reduce((a,g)=>a+g.items.length,0),got=groups.reduce((a,g)=>a+g.items.filter(i=>checked[i.k]).length,0);
   return`${weekNav("shop",wk)}<div style="display:flex;justify-content:center">${tripBar}</div><section class="card"><div class="row-between"><h2>${trip===1?"Main shop":"Top-up shop"}</h2><span class="chip ${got===total?"good":""}">${got}/${total} in the basket</span></div>
-  <p class="small muted" style="margin:4px 0 0">Only what your plan eats: ${esc(covers)}, plus lunches and snacks ${trip===1?`up to ${DAYN[T.split]}`:`from ${DAYN[T.split+1]} to Sat`}. Amounts are what the recipes use; shops may sell bigger packs. Meals you eat out are left off.</p></section>
-  ${groups.map(g=>`<section class="card shop-group"><h3>${esc(g.aisle)}</h3>${g.items.map(i=>{const id="s"+hash(i.k);return`<div class="shop-item ${checked[i.k]?"done":""}"><input type="checkbox" id="${id}" data-shop="${esc(i.k)}" data-wk="${wk}" ${checked[i.k]?"checked":""}><label for="${id}">${esc(i.n)}</label><span class="qty">${esc(fmtBuy(i))}</span></div>`}).join("")}</section>`).join("")}`;
+  <p class="small muted" style="margin:4px 0 0">Only what your plan eats: ${esc(covers)}, plus lunches and snacks ${trip===1?`up to ${DAYN[T.split]}`:`from ${DAYN[T.split+1]} to Sat`}. Where a pack size is known, it shows packs to buy; what's left over goes to At home and is used first next time. Tap pack to set a size. Meals you eat out are left off.</p></section>
+  ${pantryCard()}
+  ${groups.map(g=>`<section class="card shop-group"><h3>${esc(g.aisle)}</h3>${g.items.map(i=>{const id="s"+hash(i.k);const bk=i.k.slice(3);const rec=allChecked[i.k];const bp=rec&&typeof rec==="object"?rec:buyPlan({...i,k:bk},wk,trip);
+      const covered=!rec&&bp.toBuy<=1e-9&&bp.have>0;
+      const qty=/^(tbsp|tsp)$/.test(i.u)||i.u==="clove"?fmtBuy(i):covered?`have ${fmtNum(bp.have)} ${i.u} at home`:bp.pack?`${bp.packs} × ${fmtNum(bp.pack)} ${i.u}`:fmtBuy({...i,q:roundBuy(bp.toBuy,i.u)});
+      const note=[];if(bp.have>0&&!covered)note.push(`${fmtNum(bp.have)} ${i.u} from home`);if(bp.pack&&!covered)note.push(`need ${fmtNum(bp.toBuy)}${bp.surplus>0?`, ${fmtNum(bp.surplus)} left over`:""}`);
+      return`<div class="shop-item ${checked[i.k]||covered?"done":""}"><input type="checkbox" id="${id}" data-shop="${esc(i.k)}" data-wk="${wk}" data-trip="${trip}" ${checked[i.k]?"checked":""}><label for="${id}">${esc(i.n)}${note.length?`<span class="muted small" style="display:block">${esc(note.join(" · "))}</span>`:""}</label><span class="qty">${esc(qty)}</span>${/^(tbsp|tsp|clove)$/.test(i.u)?"":`<button class="packbtn" data-pack="${esc(bk)}" aria-label="Set pack size for ${esc(i.n)}">pack</button>`}</div>`}).join("")}</section>`).join("")}`;
 }
 function sessionDate(){
   if(gymLetter(S.sel))return S.sel;
@@ -734,6 +782,13 @@ document.addEventListener("click",e=>{
     toast(was?"Back on the plan":k==="snack"?"Snack skipped":"Marked as eating out. Shopping list updated.");render();return}
   if(b.dataset.snackoff||b.dataset.snacktoggle){const id=b.dataset.snackoff||b.dataset.snacktoggle;const off=snacksOff().slice();const i=off.indexOf(id);if(i>=0&&!b.dataset.snackoff)off.splice(i,1);else if(i<0)off.push(id);
     S.settings={...S.settings,snacksOff:off};persist();toast(off.includes(id)?`${recipe(id).name}: not planned any more`:`${recipe(id).name}: back in the plan`);render();return}
+  if(b.dataset.pack){const k=b.dataset.pack;const[n,u]=k.split("|");const cur=packOf(k);const v=window.prompt(`How much ${n} is in one pack (${u})? Leave empty if you buy it loose.`,cur?String(cur):"");if(v===null)return;
+    const num=parseFloat(String(v).replace(",","."));S.packs={...S.packs,[k]:isNaN(num)||num<=0?0:num};persist();toast(isNaN(num)||num<=0?`${n}: bought loose`:`${n}: packs of ${fmtNum(num)} ${u}`);render();return}
+  if(b.dataset.pedit){const e=S.pantry.find(x=>x.id===b.dataset.pedit);if(!e)return;const v=window.prompt(`How much ${e.n} is left (${e.u})? 0 removes it.`,fmtNum(e.qty));if(v===null)return;const num=parseFloat(String(v).replace(",","."));e.qty=isNaN(num)?e.qty:Math.max(0,num);cleanPantry();persist();render();return}
+  if(b.id==="pantry-add"){const n=window.prompt("What do you have at home? (e.g. rice)");if(!n)return;const u=window.prompt(`Unit for ${n}: g, pc, can, bag…`,"g");if(!u)return;const q=parseFloat(String(window.prompt(`How much ${n} (${u})?`,"")||"").replace(",","."));if(isNaN(q)||q<=0)return;
+    const name=n.trim().toLowerCase();const unit=normUnit(u.trim());const known=allRecipes().concat([SALAD],SNACK_RECIPES).flatMap(r=>r.ing).find(i=>i[0]===name);const a=known?known[3]:"Cupboard (check first)";
+    S.pantry.push({id:"p"+Date.now().toString(36),k:name+"|"+unit,n:name,u:unit,a,qty:q,added:todayKey(),useBy:ymd(addDays(new Date(),KEEP_DAYS[a]??7))});persist();render();return}
+  if(b.dataset.ics){exportCalendar(b.dataset.ics);return}
   if(b.dataset.wkshift){S.sel=ymd(addDays(parse(S.sel),+b.dataset.wkshift));render();return}
   if(b.dataset.skip||b.dataset.unskip){const slot=b.dataset.skip||b.dataset.unskip,date=S.sel,wk=wkey(parse(date));const plan=clone(planFor(wk));const nc=plan.notCooked||{};let arr=(nc[slot]||[]).slice();
     if(b.dataset.skip){if(!arr.includes(date))arr.push(date)}else arr=arr.filter(x=>x!==date);
@@ -759,7 +814,14 @@ document.addEventListener("input",e=>{
 document.addEventListener("change",e=>{
   const i=e.target;
   if(S.page&&S.page.edit&&i.dataset.ingF){const[ix,c]=i.dataset.ingF.split(":").map(Number);S.page.form.ing[ix][c]=i.value;return}
-  if(i.dataset.shop){const wk=i.dataset.wk;const checked={...(S.shopping[wk]?.checked||{})};if(i.checked)checked[i.dataset.shop]=true;else delete checked[i.dataset.shop];
+  if(i.dataset.shop){const wk=i.dataset.wk,trip=+i.dataset.trip||1,key=i.dataset.shop;const checked={...(S.shopping[wk]?.checked||{})};
+    if(i.checked){const bk=key.slice(3);const it=shoppingList(wk,trip).flatMap(g=>g.items).find(x=>x.k===bk);const rec={at:new Date().toISOString(),used:[],added:null};
+      if(it&&!/^(tbsp|tsp|clove)$/.test(it.u)){const bp=buyPlan(it,wk,trip);let need=bp.have;const d=tripDate(wk,trip);
+        for(const e of pantryLive(d).filter(e=>e.k===bk).sort((a,b)=>a.useBy<b.useBy?-1:1)){if(need<=1e-9)break;const take=Math.min(e.qty,need);e.qty-=take;need-=take;rec.used.push([e.id,take])}
+        if(bp.surplus>1e-9){const id="p"+Date.now().toString(36);const keep=KEEP_DAYS[it.a]??7;S.pantry.push({id,k:bk,n:it.n,u:it.u,a:it.a,qty:bp.surplus,added:d,useBy:ymd(addDays(parse(d),keep))});rec.added=id}
+        Object.assign(rec,{have:bp.have,toBuy:bp.toBuy,pack:bp.pack,packs:bp.packs,surplus:bp.surplus})}
+      checked[key]=rec}
+    else{const rec=checked[key];if(rec&&typeof rec==="object"){for(const[id,q]of rec.used||[]){const e=S.pantry.find(x=>x.id===id);if(e)e.qty+=q}if(rec.added){const e=S.pantry.find(x=>x.id===rec.added);if(e)e.qty=Math.max(0,e.qty-(rec.surplus||0))}}delete checked[key]}
     save("shopping/"+wk,{week:wk,checked});render()}
 });
 document.addEventListener("submit",e=>{
@@ -803,7 +865,7 @@ function restoreBackup(){
 }
 if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 
-loadLocal();
+loadLocal();if(cleanPantry())persist();
 {const m=location.hash.match(/^#recipe-(.+)$/);if(m&&recipe(decodeURIComponent(m[1])))S.page={id:decodeURIComponent(m[1]),n:null,edit:false,doneSteps:{},doneIng:{},awake:true}}
 render();
 
