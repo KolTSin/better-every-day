@@ -419,6 +419,13 @@ function save(path,data){
 }
 function setDay(date,patch){const cur=S.days[date]||{date};save("days/"+date,{...cur,...patch,date})}
 
+/* ---------- Reheating: pot for saucy dishes, pan for stir-fries, oven for the rest ---------- */
+const REHEAT={pot:["chili","curry","bolognese","stew","tunapasta","thaicurry"],pan:["friedrice","stirfry","beefbroc"]};
+function reheatHow(id){const r=recipe(id);const how=r?.reheat||(REHEAT.pot.includes(id)?"pot":REHEAT.pan.includes(id)?"pan":"oven");
+  if(how==="pot")return"Reheat in a pot: splash of water, lid on, medium heat for 5–8 min, stirring, until bubbling. Heat the rice or pasta in with it.";
+  if(how==="pan")return"Reheat in a frying pan: splash of water, medium-high heat for 4–5 min, tossing, until piping hot.";
+  return"Reheat in the oven: covered with foil, 180 °C for 15–20 min, until steaming hot in the middle.";}
+
 /* ---------- Snacks: only what you've ticked off as bought ---------- */
 function ownedEver(name){for(const wk in S.shopping){for(const k in (S.shopping[wk].checked||{})){if(k.split("|")[1]===name)return true}}return false}
 function stockFor(wk,trip){
@@ -541,7 +548,7 @@ function viewToday(){
       else{right=tick();const r=recipe(m.recipeId);const kind=m.slot==="salad"||m.fresh?"fresh":"reheat";
         const batchSun=m.fresh&&T0.batchDay===parse(m.date).getDay()&&(m.slot==="b1"||m.slot==="b2");
         let sub=m.slot==="salad"?"Make fresh":batchSun?"From today's batch cook":m.fresh?"Cook fresh":"Leftovers, reheat";
-        const reheatTip=!m.fresh&&m.slot!=="salad"?`<div class="small tip">Oven: covered with foil, 180 °C, 15–20 min until steaming hot. Splash of water on rice or pasta.</div>`:"";
+        const reheatTip=!m.fresh&&m.slot!=="salad"?`<div class="small tip">${esc(reheatHow(m.recipeId))}</div>`:"";
         if(m.changed)sub=`Replanned: ${recipe(m.plannedId)?.name} isn't ready. `+sub;
         const a=avgRating(m.recipeId);const c=cw.cooks[m.slot];
         body+=`<button class="linkish" data-open="${esc(m.recipeId)}" data-n="${m.fresh&&c?c.portions:""}"><h3>${esc(r?.name)}</h3></button><div class="small muted">${esc(sub)}${a!=null?` · your avg ${fmtNum(a)}/10`:""}</div>${reheatTip}
